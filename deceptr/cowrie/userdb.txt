@@ -1,0 +1,10 @@
+# Cowrie user database
+# Format: username:uid:password
+root:x:*
+admin:x:*
+m.alaoui:x:*
+a.benali:x:*
+s.chraibi:x:*
+support:x:*
+ubuntu:x:*
+postgres:x:*

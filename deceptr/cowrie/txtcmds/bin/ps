@@ -1,0 +1,17 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1 167384 11756 ?        Ss   Jun10   0:05 /sbin/init
+root           2  0.0  0.0      0     0 ?        S    Jun10   0:00 [kthreadd]
+root           3  0.0  0.0      0     0 ?        I<   Jun10   0:00 [rcu_gp]
+root           4  0.0  0.0      0     0 ?        I<   Jun10   0:00 [rcu_par_gp]
+root         842  0.0  0.0  43012  5820 ?        Ss   Jun10   0:01 /lib/systemd/systemd-journald
+root         875  0.0  0.0  21644  5268 ?        Ss   Jun10   0:00 /lib/systemd/systemd-udevd
+systemd+     912  0.0  0.0  24248  6144 ?        Ss   Jun10   0:02 /lib/systemd/systemd-resolved
+syslog       915  0.0  0.0 223596  5432 ?        Ssl  Jun10   0:01 /usr/sbin/rsyslogd -n -iNONE
+root         918  0.0  0.0  16416  2120 ?        Ss   Jun10   0:00 /usr/sbin/cron -f
+root         922  0.0  0.0  71184  6428 ?        Ss   Jun10   0:00 /usr/sbin/sshd -D
+mysql        950  0.2 15.2 1984520 312456 ?      Ssl  Jun10   8:45 /usr/sbin/mysqld
+www-data    1102  0.0  0.1 146124  8940 ?        Ss   Jun10   0:02 nginx: master process /usr/sbin/nginx -g daemon off;
+www-data    1103  0.0  0.2 146636 10216 ?        S    Jun10   0:00 nginx: worker process
+www-data    1104  0.0  0.2 146636 10216 ?        S    Jun10   0:01 nginx: worker process
+root       15243  0.0  0.0   9420  1536 pts/0    Ss   12:30   0:00 -bash
+root       15492  0.0  0.0   8624  1248 pts/0    R+   12:35   0:00 ps aux
