@@ -1,0 +1,316 @@
+
+# DECEPTR v1 — MVP
+# Stack : Cowrie → Filebeat → Logstash → Elasticsearch → Pipeline Python → MySQL → Kibana + ElastAlert 2
+# Démarrage : docker compose up -d
+
+networks:
+  dmz:       # Cowrie exposé internet (honeypot)
+  internal:  # Pipeline, bases de données, API — jamais exposé
+
+volumes:
+  cowrie_logs:
+  dionaea_logs:
+  elastic_data:
+  mysql_data:
+  redis_data:
+  minio_data:
+
+services:
+
+  # ── HONEYPOT ────────────────────────────────────────────────────────────────
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: deceptr-cowrie
+    restart: unless-stopped
+    ports:
+      - "2222:2222"   # SSH leurre
+      - "2223:2223"   # Telnet leurre
+    volumes:
+      - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
+      - ./cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
+      - ./cowrie/honeyfs:/cowrie/cowrie-git/honeyfs:ro
+      - ./cowrie/txtcmds:/cowrie/cowrie-git/share/cowrie/txtcmds:ro
+      - cowrie_logs:/cowrie/cowrie-git/var/log/cowrie
+    networks: [dmz]
+    environment:
+      - COWRIE_HOSTNAME=${COWRIE_HOSTNAME:-srv-prod-01}
+
+  web-honeypot:
+    build: { context: ./web-honeypot }
+    container_name: deceptr-web-honeypot
+    restart: unless-stopped
+    ports:
+      - "10443:8080"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-deceptr-redis-2026}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+    networks: [dmz, internal]
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  dionaea:
+    image: dinotools/dionaea:latest
+    container_name: deceptr-dionaea
+    restart: unless-stopped
+    ports:
+      - "21:21"
+      - "80:80"
+      - "445:445"
+      - "3306:3306"
+    volumes:
+      - dionaea_logs:/opt/dionaea/var/log
+      - ./dionaea/smb:/opt/dionaea/var/dionaea/roots/smb
+    networks: [dmz]
+
+  # ── FILEBEAT (collecte logs Cowrie → Logstash) ───────────────────────────────
+  filebeat:
+    image: elastic/filebeat:8.13.0
+    container_name: deceptr-filebeat
+    restart: unless-stopped
+    command: ["--strict.perms=false"]
+    user: root
+    volumes:
+      - ./elk/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./elk/certs/ca.crt:/usr/share/filebeat/certs/ca.crt:ro
+      - cowrie_logs:/cowrie/logs:ro
+      - dionaea_logs:/dionaea/logs:ro
+      - ${TPOT_COWRIE_LOG_PATH:-./tpot/cowrie/log}:/tpot/cowrie/log:ro
+    networks: [internal]
+    depends_on: [logstash]
+
+  # ── LOGSTASH (parse + index → Elasticsearch) ──────────────────────────────────
+  logstash:
+    image: logstash:8.13.0
+    container_name: deceptr-logstash
+    restart: unless-stopped
+    command: ["-f", "/usr/share/logstash/pipeline/cowrie.conf"]
+    volumes:
+      - ./elk/logstash/pipeline/cowrie.conf:/usr/share/logstash/pipeline/cowrie.conf:ro
+      - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./elk/certs/logstash.crt:/usr/share/logstash/config/certs/logstash.crt:ro
+      - ./elk/certs/logstash.key:/usr/share/logstash/config/certs/logstash.key:ro
+    ports:
+      - "5044:5044"
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-deceptr2025}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-deceptr-redis-2026}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: deceptr-redis
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-deceptr-redis-2026}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-deceptr-redis-2026} ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── ELASTICSEARCH ────────────────────────────────────────────────────────────
+  elasticsearch:
+    image: elasticsearch:8.13.0
+    container_name: deceptr-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-deceptr2025}
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL","curl -sf -u elastic:${ELASTIC_PASSWORD:-deceptr2025} http://localhost:9200/_cluster/health | grep -v red"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # ── KIBANA ───────────────────────────────────────────────────────────────────
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: deceptr-kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASS:-deceptr-kibana}
+      - SERVER_NAME=DECEPTR-Kibana
+      - NODE_OPTIONS=--max-old-space-size=512
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=deceptr-local-encrypted-saved-objects-key-2026
+      - XPACK_SECURITY_ENCRYPTIONKEY=deceptr-local-security-encryption-key-2026
+      - XPACK_REPORTING_ENCRYPTIONKEY=deceptr-local-reporting-encryption-key-2026
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # ── KIBANA SETUP (one-shot : initialise kibana_system) ───────────────────────
+  kibana-setup:
+    image: elasticsearch:8.13.0
+    container_name: deceptr-kibana-setup
+    restart: "no"
+    networks: [internal]
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-deceptr2025}
+      - KIBANA_SYSTEM_PASS=${KIBANA_SYSTEM_PASS:-deceptr-kibana}
+    entrypoint: >
+      bash -c "until curl -sf -u elastic:$$ELASTIC_PASSWORD http://elasticsearch:9200 >/dev/null; do sleep 5; done; curl -sf -X POST -u elastic:$$ELASTIC_PASSWORD -H 'Content-Type: application/json' http://elasticsearch:9200/_security/user/kibana_system/_password -d '{\"password\":\"'$$KIBANA_SYSTEM_PASS'\"}' && echo 'kibana_system OK'"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # ── MYSQL 8 (données métier) ──────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: deceptr-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root2025}
+      - MYSQL_DATABASE=deceptr
+      - MYSQL_USER=deceptr
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql2025}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./mysql/procedures.sql:/docker-entrypoint-initdb.d/02_procedures.sql:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL","mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── PYTHON PIPELINE (7 étapes) ────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: deceptr-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-deceptr_admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-MotDePasseMinIO2026!}
+    volumes:
+      - minio_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pipeline:
+    build: { context: ./pipeline }
+    container_name: deceptr-pipeline
+    restart: unless-stopped
+    command: python main.py
+    environment:
+      - ELASTIC_HOST=http://elasticsearch:9200
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-deceptr2025}
+      - MYSQL_HOST=mysql
+      - MYSQL_DB=deceptr
+      - MYSQL_USER=deceptr
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql2025}
+      - VIRUSTOTAL_KEY=${VIRUSTOTAL_KEY:-}
+      - ABUSEIPDB_KEY=${ABUSEIPDB_KEY:-}
+      - GEOIP_DB=/app/data/GeoLite2-City.mmdb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-deceptr-redis-2026}
+      - REDIS_QUEUE=${REDIS_QUEUE:-deceptr:events}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-deceptr_admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-MotDePasseMinIO2026!}
+      - MINIO_SECURE=false
+      - LOG_LEVEL=INFO
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── FASTAPI (API REST) ────────────────────────────────────────────────────────
+  api:
+    build: { context: ./pipeline }
+    container_name: deceptr-api
+    restart: unless-stopped
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - ELASTIC_HOST=http://elasticsearch:9200
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-deceptr2025}
+      - MYSQL_HOST=mysql
+      - MYSQL_DB=deceptr
+      - MYSQL_USER=deceptr
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mysql2025}
+      - JWT_SECRET=${JWT_SECRET:-deceptr-secret-change-me}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-deceptr_admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-MotDePasseMinIO2026!}
+      - MINIO_SECURE=false
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # ── ELASTALERT 2 ──────────────────────────────────────────────────────────────
+  dashboard:
+    image: nginx:1.27-alpine
+    container_name: deceptr-dashboard
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    volumes:
+      - ./dashboard:/usr/share/nginx/html:ro
+    depends_on:
+      api:
+        condition: service_started
+
+  elastalert:
+    image: jertel/elastalert2:latest
+    container_name: deceptr-elastalert
+    restart: unless-stopped
+    volumes:
+      - ./elk/elastalert/config.yaml:/opt/elastalert/config.yaml:ro
+      - ./elk/elastalert/rules:/opt/elastalert/rules:ro
+    networks: [internal]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy

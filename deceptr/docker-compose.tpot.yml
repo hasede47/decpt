@@ -1,0 +1,14 @@
+# Production/T-Pot override.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.tpot.yml up -d --build
+#
+# In the target architecture the honeypot is the official T-Pot Cowrie sensor.
+# DECEPTR keeps Logstash, Redis, the Python pipeline, Elasticsearch, MySQL,
+# MinIO, API, Kibana and ElastAlert. Local Cowrie and local Filebeat stay
+# available only for isolated lab mode through explicit profiles.
+services:
+  cowrie:
+    profiles: ["local-cowrie"]
+
+  filebeat:
+    profiles: ["local-filebeat"]
