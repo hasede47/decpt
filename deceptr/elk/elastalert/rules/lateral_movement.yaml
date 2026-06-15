@@ -1,0 +1,22 @@
+name: DECEPTR - Lateral Movement Pattern
+type: cardinality
+index: "cowrie-*"
+cardinality_field: "dest_port"
+max_cardinality: 3
+timeframe:
+  minutes: 5
+
+filter:
+- term:
+    event_type: "connection"
+
+alert:
+- "slack"
+
+slack:
+slack_webhook_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+
+alert_text_type: alert_text_only
+alert_text: "🚨 *LATERAL MOVEMENT DETECTED* 🚨\nIP `{0}` is scanning multiple ports across the honeypot network."
+alert_text_args:
+- "src_ip"

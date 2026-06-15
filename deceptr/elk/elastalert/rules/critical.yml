@@ -1,0 +1,34 @@
+name: DECEPTR - Critical Alert
+type: any
+index: deceptr-events-*
+
+filter:
+  - term:
+      severity: "CRITICAL"
+
+realert:
+  minutes: 5
+
+alert:
+  - debug
+
+alert_subject: "[DECEPTR] 🔴 CRITICAL - {0}"
+alert_subject_args: [src_ip]
+
+alert_text: |
+  DECEPTR - Alerte CRITICAL
+  IP Attaquant : {0}
+  Leurre       : {1}
+  ATT&CK       : {2} - {3}
+  Pays         : {4}
+  Risk Score   : {5}/100
+  Timestamp    : {6}
+
+alert_text_args:
+  - src_ip
+  - lure_type
+  - mitre_technique
+  - mitre_tech_name
+  - geo.country_name
+  - risk_score
+  - timestamp

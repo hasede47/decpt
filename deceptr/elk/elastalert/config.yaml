@@ -1,0 +1,16 @@
+es_host: elasticsearch
+es_port: 9200
+es_username: elastic
+es_password: "deceptr2025"
+
+writeback_index: elastalert_status
+run_every:
+  minutes: 2
+buffer_time:
+  minutes: 15
+alert_time_limit:
+  days: 2
+
+rules_folder: /opt/elastalert/rules
+use_ssl: false
+verify_certs: false

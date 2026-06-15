@@ -1,0 +1,33 @@
+name: DECEPTR - Brute Force Detection
+type: frequency
+index: deceptr-events-*
+
+num_events: 5
+timeframe:
+  minutes: 10
+
+filter:
+  - term:
+      event_type: "login_attempt"
+
+query_key: src_ip
+
+realert:
+  minutes: 30
+
+alert:
+  - debug
+
+alert_subject: "[DECEPTR] 🟠 Brute Force - {0}"
+alert_subject_args: [src_ip]
+
+alert_text: |
+  DECEPTR - Brute Force Détecté
+  IP         : {0}
+  Tentatives : {1} en 10 minutes
+  Pays       : {2}
+
+alert_text_args:
+  - src_ip
+  - num_hits
+  - geo.country_name

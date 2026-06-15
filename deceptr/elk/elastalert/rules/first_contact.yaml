@@ -1,0 +1,20 @@
+name: DECEPTR - First Contact (New IP Scan)
+type: any
+index: "cowrie-*"
+
+filter:
+- term:
+    event_type: "connection"
+
+# Alert when a new IP that hasn't been seen before connects
+alert:
+- "slack"
+
+slack:
+slack_webhook_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+
+alert_text_type: alert_text_only
+alert_text: "🚨 *FIRST CONTACT* 🚨\nA new IP `{0}` has scanned the honeypot.\nGeo: {1}"
+alert_text_args:
+- "src_ip"
+- "geo.country_name"

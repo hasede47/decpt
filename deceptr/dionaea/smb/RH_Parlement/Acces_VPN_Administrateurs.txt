@@ -1,0 +1,6 @@
+# CONFIDENTIEL DEFENSE
+# NE PAS DIFFUSER
+# DO NOT DISTRIBUTE
+
+Lien de réinitialisation des mots de passe admin:
+http://localhost:8000/api/canary/trigger/smb-token-admin

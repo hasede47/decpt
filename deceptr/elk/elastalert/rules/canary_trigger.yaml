@@ -1,0 +1,20 @@
+name: DECEPTR - Canary Triggered (Critical)
+type: any
+index: "cowrie-*"
+
+filter:
+- term:
+    event_type: "honeytoken_triggered"
+
+alert:
+- "slack"
+
+slack:
+slack_webhook_url: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+slack_msg_color: "danger"
+
+alert_text_type: alert_text_only
+alert_text: "🔥 *CRITICAL: HONEYTOKEN TRIGGERED* 🔥\nAn attacker at `{0}` opened the decoy file `{1}`!\nImmediate action required."
+alert_text_args:
+- "src_ip"
+- "honeytoken_id"
