@@ -1,0 +1,15 @@
+services:
+  deceptr-tpot-filebeat:
+    image: elastic/filebeat:8.13.0
+    container_name: deceptr-tpot-filebeat
+    restart: unless-stopped
+    user: root
+    command: ["--strict.perms=false"]
+    environment:
+      - DECEPTR_LOGSTASH_HOST=${DECEPTR_LOGSTASH_HOST}
+      - DECEPTR_LOGSTASH_PORT=${DECEPTR_LOGSTASH_PORT:-5044}
+    volumes:
+      - ./filebeat/tpot-cowrie-to-deceptr.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./certs/ca.crt:/usr/share/filebeat/certs/ca.crt:ro
+      - ${TPOT_COWRIE_LOG_PATH:-/data/cowrie/log}:/tpot/cowrie/log:ro
+

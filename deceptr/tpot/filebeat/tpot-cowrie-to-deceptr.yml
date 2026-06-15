@@ -1,0 +1,20 @@
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /tpot/cowrie/log/cowrie.json
+    json.keys_under_root: true
+    json.overwrite_keys: true
+    json.add_error_key: true
+    tags: ["cowrie", "tpot"]
+    fields:
+      deceptr_source: tpot-cowrie
+
+output.logstash:
+  hosts: ["${DECEPTR_LOGSTASH_HOST}:${DECEPTR_LOGSTASH_PORT}"]
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/usr/share/filebeat/certs/ca.crt"]
+  ssl.verification_mode: full
+
+logging.level: warning
+
